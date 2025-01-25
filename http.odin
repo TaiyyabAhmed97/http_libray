@@ -5,8 +5,9 @@ import "core:net"
 import "core:thread"
 import "core:bytes"
 import "core:strings"
+import "core:mem"
 
-Http_Request :: struct {
+Request_headers :: struct {
 	method: string,
 	path: string,
 	host: string,
@@ -15,32 +16,46 @@ Http_Request :: struct {
 }
 
 Http_Request :: struct {
-	headers: map[string]string,
+	headers: ^map[string]string,
 	body: string
+}
+
+parse_first_line_of_request :: proc(request_line: []u8) -> (string, string) {
+	line_split_by_space := bytes.split(request_line, []u8{32})
+	method := transmute(string)line_split_by_space[0]	
+	path := transmute(string)line_split_by_space[1]
+
+	return method, path
+}
+
+bytes_to_str :: proc(bytes: []u8) -> string {
+	return transmute(string)bytes
 }
 
 parse_request :: proc (request: []u8) -> Http_Request {
 	bytes_split_by_line := bytes.split(request, []u8{10})
-	first_line_split_by_space := bytes.split(bytes_split_by_line[0], []u8{32})
-	method := transmute(string)first_line_split_by_space[0]	
-	path := transmute(string)first_line_split_by_space[1]	
-	
-	second_line_split_by_space := bytes.split(bytes_split_by_line[1], []u8{32})
-	host := transmute(string)second_line_split_by_space[1]
+	headers := new(map[string]string)
+	method, path := parse_first_line_of_request(bytes_split_by_line[0])
+	headers["method"] = method
+	headers["path"] = path
+	body_idx: int
+	for line, index in bytes_split_by_line[1:] {
+			if (len(line) == 1 && line[0] == 13) {
+				body_idx = (index + 2)
+				break
+			}
+			line_split_by_space := bytes.split(line, []u8{32})
+			headers[bytes_to_str(line_split_by_space[0])] = bytes_to_str(line_split_by_space[1])
+	}
+	fmt.println(bytes_split_by_line[body_idx])
+	body := bytes_to_str(bytes_split_by_line[body_idx])
 
-	third_line_split_by_space := bytes.split(bytes_split_by_line[2], []u8{32})
-	user_agent := transmute(string)third_line_split_by_space[1]
-
-	fourth_line_split_by_space := bytes.split(bytes_split_by_line[3], []u8{32})
-	accept := transmute(string)fourth_line_split_by_space[1]
-
-	return Http_Request{method, path, host, user_agent, accept}
+	return Http_Request{headers, body}
 }
 
 parse_message :: proc(message: []u8) {
 	req := parse_request(message)
-	using req
-	fmt.printfln(" method: %s\n path: %s\n host: %s\n user_agent: %s\n accept: %s", method, path, host, user_agent, accept)
+	fmt.println(req)
 }
 
 is_end_of_message :: proc(bytes: []u8) -> bool {
@@ -53,22 +68,19 @@ is_end_of_message :: proc(bytes: []u8) -> bool {
 handle_msg :: proc(sock: net.TCP_Socket) {
 	buffer: [2048]u8
 	for {
+		// TODO: handle case when incoming message is greater that 2048 bytes
 		bytes_recv, err_recv := net.recv_tcp(sock, buffer[:])
 		if err_recv != nil {
 			fmt.println("Failed to receive data")
 		}
 		received := buffer[:bytes_recv]
 		bytes_to_str := transmute(string)received
-		fmt.println(len(received))
 		fmt.println(received)
 		fmt.println(bytes_to_str)
-		fmt.println(received[len(received)-1])
-		if is_end_of_message(received) {
-			parse_message(received)
-			// send_reply()
-			fmt.println("Disconnecting client")
-			break
-		}
+
+		parse_message(received)
+		// send_response()
+		break
 	}	
 	net.close(sock)
 }
@@ -101,5 +113,26 @@ tcp_server :: proc(ip: string, port: int) {
 }
 
 create_http_server :: proc(ip: string, port: int) {
+	when ODIN_DEBUG {
+			track: mem.Tracking_Allocator
+			mem.tracking_allocator_init(&track, context.allocator)
+			context.allocator = mem.tracking_allocator(&track)
+			fmt.println("started tracking allocator")
+			defer {
+				if len(track.allocation_map) > 0 {
+					fmt.printf("=== %v allocations not freed: ===\n", len(track.allocation_map))
+					for _, entry in track.allocation_map {
+						fmt.printf("- %v bytes @ %v\n", entry.size, entry.location)
+					}
+				}
+				if len(track.bad_free_array) > 0 {
+					fmt.printf("=== %v incorrect frees: ===\n", len(track.bad_free_array))
+					for entry in track.bad_free_array {
+						fmt.printf("- %p @ %v\n", entry.memory, entry.location)
+					}
+				}
+				mem.tracking_allocator_destroy(&track)
+			}
+		}
 	tcp_server(ip, port)
 }
