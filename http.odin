@@ -14,19 +14,32 @@ Request_headers :: struct {
 	accept: string
 }
 
+Http_Server_struct :: struct {
+	request: Http_Request,
+	response: Http_Response,
+	routes: map[string]proc(Http_Request, ^Http_Response) -> ^Http_Response
+}
+
 Http_Request :: struct {
 	headers: ^map[string]string,
 	body: string
 }
 
 Http_Response :: struct {
-	response_code: int,
-	response_status: string,
+	code: int,
+	status: string,
 	date: datetime.DateTime,
 	content_type: string,
 	content_length: int,
 	connection: string,
 	accept_ranges: string
+}
+
+http_server_builder :: proc() -> Http_Server_struct {
+	headers_map := make(map[string]string)
+	empty_request := Http_Request{}
+	empty_response := Http_Response{}
+	return Http_Server_struct{empty_request, empty_response, make(map[string]proc(Http_Request, ^Http_Response) -> ^Http_Response)}
 }
 
 parse_first_line_of_request :: proc(request_line: []u8) -> (string, string) {
@@ -46,7 +59,7 @@ str_to_bytes :: proc(str: string) -> []u8 {
 
 parse_request :: proc (request: []u8) -> Http_Request {
 	bytes_split_by_line := bytes.split(request, []u8{10})
-	headers := new(map[string]string)
+	headers := make(map[string]string)
 	method, path := parse_first_line_of_request(bytes_split_by_line[0])
 	headers["method"] = method
 	headers["path"] = path
@@ -61,19 +74,27 @@ parse_request :: proc (request: []u8) -> Http_Request {
 	}
 	body := bytes_to_str(bytes_split_by_line[body_idx])
 
-	return Http_Request{headers, body}
+	return Http_Request{&headers, body}
 }
 
-parse_message :: proc(message: []u8) -> Http_Request {
+parse_message :: proc(message: []u8, server: ^Http_Server_struct) -> Http_Request {
 	req := parse_request(message)
+	server.request = req
 	return req
 }
 
-send_response :: proc(socket: net.TCP_Socket) {
+register_route :: proc(route: string, callback: proc(Http_Request, ^Http_Response) -> ^Http_Response, server: ^Http_Server_struct) {
+	fmt.println("in register route")
+	server.routes[route] = callback
+}
+
+send_response :: proc(socket: net.TCP_Socket, server: ^Http_Server_struct) {
 	// TODO: write rules:
 	//		1. check if path exists, return 200 || 404 based on value
+	
 	//		2. create cahcing for last-modified field
 	//		3. other things like, Date, Connection, Content-length seem to be straighforward
+
 	response_str := "HTTP/1.1 200 OK\nServer: nginx/1.22.1\nDate: Sat, 25 Jan 2025 20:02:07 GMT\nContent-Type: text/html\nContent-Length: 0\nLast-Modified: Sun, 19 Jan 2025 22:13:37 GMT\nConnection: keep-alive\nETag: 678d7911-479\nAccept-Ranges: bytes\n\r"
 	bytes_from_str := str_to_bytes(response_str)
 	net.send_tcp(socket, bytes_from_str)
@@ -86,7 +107,7 @@ is_end_of_message :: proc(bytes: []u8) -> bool {
 }
 
 
-handle_msg :: proc(sock: net.TCP_Socket) {
+handle_msg :: proc(sock: net.TCP_Socket, server: ^Http_Server_struct) {
 	buffer: [2048]u8
 	for {
 		// TODO: handle case when incoming message is greater that 2048 bytes
@@ -99,14 +120,15 @@ handle_msg :: proc(sock: net.TCP_Socket) {
 		fmt.println(received)
 		fmt.println(bytes_to_str)
 
-		request := parse_message(received)
+		request := parse_message(received, server)
+		fmt.println("Server struct: ", server)
 		send_response(sock)
 		break
 	}	
 	net.close(sock)
 }
 
-tcp_server :: proc(ip: string, port: int) {
+tcp_server :: proc(ip: string, port: int, server: ^Http_Server_struct) {
 	local_addr, ok := net.parse_ip4_address(ip)
 	if !ok {
 		fmt.println("Failed to parse IP address")
@@ -127,12 +149,12 @@ tcp_server :: proc(ip: string, port: int) {
 		if err_accept != nil {
 			fmt.println("Failed to accept TCP connection")
 		}
-		thread.create_and_start_with_poly_data(cli, handle_msg)
+		thread.create_and_start_with_poly_data2(cli, server,handle_msg)
 	}
 	net.close(sock)
 	fmt.println("Closed socket")
 }
 
-create_http_server :: proc(ip: string, port: int) {
-	tcp_server(ip, port)
+create_http_server :: proc(ip: string, port: int, server: ^Http_Server_struct) {
+	tcp_server(ip, port, server)
 }
