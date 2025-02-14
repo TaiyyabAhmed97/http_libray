@@ -15,6 +15,12 @@ Request_headers :: struct {
 	accept: string
 }
 
+Config ::  struct {
+	hostname: string,
+	port: int,
+	socket: net.TCP_Socket
+}
+
 Http_Server_struct :: struct {
 	request: Http_Request,
 	response: Http_Response,
@@ -35,6 +41,7 @@ Http_Response :: struct {
 	connection: string,
 	accept_ranges: string
 }
+_main_socket: net.TCP_Socket
 
 http_server_builder :: proc() -> Http_Server_struct {
 	headers_map := make(map[string]string)
@@ -185,6 +192,43 @@ tcp_server :: proc(ip: string, port: int, server: ^Http_Server_struct) {
 	fmt.println("Closed socket")
 }
 
-create_http_server :: proc(ip: string, port: int, server: ^Http_Server_struct) {
-	tcp_server(ip, port, server)
+create_http_client :: proc(using config: ^Config) {
+	assert(config != nil, "plese give proper config")
+	sock, err := net.dial_tcp(hostname, port)
+	if err != nil {
+		fmt.panicf("Unable to create socket to send http request on %s", err)
+	}
+	_main_socket = sock
+}
+
+send_http_request :: proc(request: string) {
+	net.send_tcp(_main_socket, str_to_bytes(request))
+}
+
+set_general_headers :: proc(headers: ^map[string]string) {
+	headers["Host"] = "127.0.0.1:8080"
+	headers["User-Agent"] = "Odeen"
+	headers["Accept"] = "*/*"
+}
+
+create_request :: proc() -> Http_Request {
+	headers := make(map[string]string)
+	set_general_headers(&headers)
+	req := Http_Request {
+		headers,
+		"<h1>Hello World</h1>"
+	}
+	return req
+}
+
+
+
+GET :: proc(path: string) {
+	req := create_request()
+	// the following 2 lines should also be in a seperate build_req_string_from_req_struct function
+	b := strings.builder_make()
+	fmt.sbprintf(&b, "GET %s HTTP/1.1", path)
+	req_to_string := strings.to_string(b)
+	fmt.println(req_to_string)
+	send_http_request(req_to_string)
 }
