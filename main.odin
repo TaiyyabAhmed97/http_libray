@@ -6,6 +6,7 @@ import "core:thread"
 import "core:os/os2"
 import "core:os"
 import "core:mem"
+import "core:strings"
 
 URL :: struct {
 	scheme: string,
@@ -24,8 +25,6 @@ handle_msg :: proc(sock: net.TCP_Socket, request: []u8) {
 }
 
 open_file :: proc(path: string) {
-
-	fmt.println("opening file? with path", path)
 	file, file_err := os2.read_entire_file_from_path(path, context.temp_allocator)
 	if file_err != nil {
 		fmt.println("Opening File Error", file_err)
@@ -67,7 +66,9 @@ request_webpage :: proc(url: URL) {
 	fmt.print(transmute(string)msg)
 }
 
-browser_split_url :: proc(target_url: string) -> (url_obj: URL) {
+browser_split_url :: proc(target_url_array: []string) -> (url_obj: URL) {
+	target_url := target_url_array[0]
+	fmt.println(target_url)
 	target_scheme := target_url[0:4]
 	switch target_scheme {
 		case "file":
@@ -84,29 +85,39 @@ browser_split_url :: proc(target_url: string) -> (url_obj: URL) {
 			host=host,
 			path=path,
 		}
+		case "data":
+			data_string_joined := strings.join(target_url_array[:], " ")
+			data_string_split := strings.split(data_string_joined, ",")
+			url_obj = URL {
+				scheme = "data",
+				path=data_string_split[1]
+			}
 	}
 	return
 }
 
 main :: proc() {
 	args := os.args
-	if len(args) != 3 {
-		fmt.println("Usage: ", args[0], "<address> <port>")
-		os.exit(1)
-	}
-
 	address := args[1]
 	port := args[2]
 
-	url_obj := browser_split_url(address)
+	//TODO: convert URL into union so that I can create a new type/enum union thing per scheme
+
+	url_obj := browser_split_url(args[1:])
 	fmt.println("Browser hacking!\n ", url_obj)	
 	switch url_obj.scheme {
 	case "file":
+		fmt.println("Processing File")
 		open_file(url_obj.path)
 	case "http":
+		fmt.println("Processing Request")
 		url_obj.port = port
 		request_webpage(url_obj)
+	case "data":		
+		fmt.println("Processing Data")
+		fmt.println(url_obj.path)
 	}
+
 		
 	
 }
