@@ -61,9 +61,13 @@ request_webpage :: proc(url: URL) {
 		os.exit(1)
 	}
 
-	msg := bytes_buff[:bytes_recv]
+	msg := string(bytes_buff[:bytes_recv])
 	fmt.println("Response Recieved: ")
-	fmt.print(transmute(string)msg)
+	//entities support (&lt; == <) (&gt; == >)
+	// process entities
+	less_thans_replaced, _ := strings.replace_all(msg, "&lt;", "<")
+	greater_thans_replaced, _ := strings.replace_all(less_thans_replaced, "&gt;", ">")
+	fmt.print(greater_thans_replaced)
 }
 
 browser_split_url :: proc(target_url_array: []string) -> (url_obj: URL) {
