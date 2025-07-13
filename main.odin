@@ -13,7 +13,8 @@ URL :: struct {
 	url: string,
 	host: string,
 	path: string,
-	port: string
+	port: string,
+	view_source: bool,
 }
 
 handle_msg :: proc(sock: net.TCP_Socket, request: []u8) {
@@ -60,8 +61,12 @@ request_webpage :: proc(url: URL) {
 	}
 
 	msg := string(bytes_buff[:bytes_recv])
-	render_html(msg)
-	fmt.println("Response Recieved")
+	fmt.println("Response Recieved:")
+	if url.view_source {
+		fmt.println(msg)
+	} else {
+		render_html(msg)
+	}
 }
 
 append_strings :: proc(string1, string2: string) -> string {
@@ -122,6 +127,16 @@ browser_split_url :: proc(target_url_array: []string) -> (url_obj: URL) {
 				scheme = "data",
 				path=data_string_split[1]
 			}
+		case "view":
+			scheme, host, path, _, _ := net.split_url(target_url[12:])
+			 url_obj = URL{
+				scheme="http",
+				url=target_url[12:],
+				host=host,
+				path=path,
+				view_source=true
+			}
+
 	}
 	return
 }
