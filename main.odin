@@ -24,7 +24,8 @@ handle_msg :: proc(sock: net.TCP_Socket, request: []u8) {
 }
 
 open_file :: proc(path: string) {
-	fmt.println("opening file?")
+
+	fmt.println("opening file? with path", path)
 	file, file_err := os2.read_entire_file_from_path(path, context.temp_allocator)
 	if file_err != nil {
 		fmt.println("Opening File Error", file_err)
@@ -66,7 +67,26 @@ request_webpage :: proc(url: URL) {
 	fmt.print(transmute(string)msg)
 }
 
-
+browser_split_url :: proc(target_url: string) -> (url_obj: URL) {
+	target_scheme := target_url[0:4]
+	switch target_scheme {
+		case "file":
+			path := target_url[7:]
+			url_obj = URL{
+			scheme="file",
+			path=path,
+		}
+		case "http":
+		 scheme, host, path, _, _ := net.split_url(target_url)
+		 url_obj = URL{
+			scheme="http",
+			url=target_url,
+			host=host,
+			path=path,
+		}
+	}
+	return
+}
 
 main :: proc() {
 	args := os.args
@@ -77,28 +97,15 @@ main :: proc() {
 
 	address := args[1]
 	port := args[2]
-	scheme, host, path, _, _ := net.split_url(address)
-	my_url_obj : URL;
-	fmt.println("Browser hacking!\n ", my_url_obj)	
-	switch scheme {
+
+	url_obj := browser_split_url(address)
+	fmt.println("Browser hacking!\n ", url_obj)	
+	switch url_obj.scheme {
 	case "file":
-		my_url_obj = URL{
-			scheme=scheme,
-			path=host,
-			port="",
-			url=""
-		}
-		fmt.println(my_url_obj)
-		open_file(my_url_obj.path)
+		open_file(url_obj.path)
 	case "http":
-		my_url_obj = URL{
-			scheme=scheme,
-			url=address,
-			host=host,
-			path=path,
-			port=port
-		}
-		request_webpage(my_url_obj)
+		url_obj.port = port
+		request_webpage(url_obj)
 	}
 		
 	
