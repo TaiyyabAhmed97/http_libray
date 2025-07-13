@@ -35,7 +35,6 @@ open_file :: proc(path: string) {
 
 request_webpage :: proc(url: URL) {
 	hostname_and_port := fmt.tprintf("%s:%s", url.host, url.port)
-	fmt.println("hostname_and_port: ", hostname_and_port)
 
 	socket, err_dial := net.dial_tcp_from_hostname_and_port_string(hostname_and_port)
 	if err_dial != nil {
@@ -44,8 +43,7 @@ request_webpage :: proc(url: URL) {
 	}
 	defer net.close(socket)
 
-	request := fmt.tprintf("GET {} HTTP/1.0\r\nHost: {}\r\nConnection: keep-alive\r\nCache-Control: no-cache, no-store, max-age=0, must-revalidate\r\n\r\n",url.path, url.host)
-	fmt.printf("Sending Request: \n%s", request)
+	request := fmt.tprintf("GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: OdinHttpClient\r\nAccept: */*\r\n\r\n",url.path, url.host)
 	bytes := transmute([]u8)request
 
 	send_bytes, err_send := net.send_tcp(socket, bytes[:])
@@ -62,12 +60,40 @@ request_webpage :: proc(url: URL) {
 	}
 
 	msg := string(bytes_buff[:bytes_recv])
-	fmt.println("Response Recieved: ")
+	render_html(msg)
+	fmt.println("Response Recieved")
+}
+
+append_strings :: proc(string1, string2: string) -> string {
+	sb := strings.builder_make()
+	strings.write_string(&sb, string1)
+	strings.write_string(&sb, string2)
+	the_string :=strings.to_string(sb)
+	return the_string
+}
+
+render_html :: proc(http_response:string) {
+	
+	// remove headers
+	http_response_lines_splitted, _ := strings.split_n(http_response, "<", 2)
+
+	html := append_strings("<", http_response_lines_splitted[1])
+	//remove body and html tags
+	body_open_tag_removed, _ := strings.replace_all(html, "<body>", "")
+	body_close_tag_removed, _ := strings.replace_all(body_open_tag_removed, "</body>", "")
+	html_open_tag_removed, _ := strings.replace_all(body_close_tag_removed, "<html>", "")
+	html_close_tag_removed, _ := strings.replace_all(html_open_tag_removed, "</html>", "")
+
+	div_open_tag_removed, _ := strings.replace_all(html_close_tag_removed, "<div>", "")
+	div_close_tag_removed, _ := strings.replace_all(div_open_tag_removed, "</div>", "")
+	span_open_tag_removed, _ := strings.replace_all(div_close_tag_removed, "<span>", "")
+	span_close_tag_removed, _ := strings.replace_all(span_open_tag_removed, "</span>", "")
+
 	//entities support (&lt; == <) (&gt; == >)
 	// process entities
-	less_thans_replaced, _ := strings.replace_all(msg, "&lt;", "<")
+	less_thans_replaced, _ := strings.replace_all(span_close_tag_removed, "&lt;", "<")
 	greater_thans_replaced, _ := strings.replace_all(less_thans_replaced, "&gt;", ">")
-	fmt.print(greater_thans_replaced)
+	fmt.println(strings.trim_space(greater_thans_replaced))
 }
 
 browser_split_url :: proc(target_url_array: []string) -> (url_obj: URL) {
@@ -106,7 +132,7 @@ main :: proc() {
 	port := args[2]
 
 	//TODO: convert URL into union so that I can create a new type/enum union thing per scheme
-
+	//TODO: figure out why subsequent html requests to same resource dont return content in them, but in curl it does?
 	url_obj := browser_split_url(args[1:])
 	fmt.println("Browser hacking!\n ", url_obj)	
 	switch url_obj.scheme {
@@ -121,8 +147,4 @@ main :: proc() {
 		fmt.println("Processing Data")
 		fmt.println(url_obj.path)
 	}
-
-		
-	
 }
-
