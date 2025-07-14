@@ -17,6 +17,16 @@ URL :: struct {
 	view_source: bool,
 }
 
+Content_Type :: enum {
+	text_html,
+	application_json
+}
+
+Headers :: struct {
+	Content_Length: int,
+	Content_Type: Content_Type
+}
+
 handle_msg :: proc(sock: net.TCP_Socket, request: []u8) {
 	buffer: [2048]u8
 	fmt.println("in thread to handle message")
@@ -34,6 +44,10 @@ open_file :: proc(path: string) {
 	fmt.printfln("File request at path %s\nContent: %s",path ,file_string)
 }
 
+parse_response_headers :: proc(headers: string) -> Headers {
+
+}
+
 request_webpage :: proc(url: URL) {
 	hostname_and_port := fmt.tprintf("%s:%s", url.host, url.port)
 
@@ -42,7 +56,6 @@ request_webpage :: proc(url: URL) {
 		fmt.eprintln("error: could not dial", err_dial)
 		os.exit(1)
 	}
-	defer net.close(socket)
 
 	request := fmt.tprintf("GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nUser-Agent: OdinHttpClient\r\nAccept: */*\r\n\r\n",url.path, url.host)
 	bytes := transmute([]u8)request
@@ -61,6 +74,8 @@ request_webpage :: proc(url: URL) {
 	}
 
 	msg := string(bytes_buff[:bytes_recv])
+	headers := parse_response_headers(bytes_buff[:])
+	defer net.close(socket)
 	fmt.println("Response Recieved:")
 	if url.view_source {
 		fmt.println(msg)
@@ -148,6 +163,7 @@ main :: proc() {
 
 	//TODO: convert URL into union so that I can create a new type/enum union thing per scheme
 	//TODO: figure out why subsequent html requests to same resource dont return content in them, but in curl it does?
+	//TODO: Connection keep-alive 1.6 exercise
 	url_obj := browser_split_url(args[1:])
 	fmt.println("Browser hacking!\n ", url_obj)	
 	switch url_obj.scheme {
