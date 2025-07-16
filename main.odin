@@ -8,6 +8,7 @@ import "core:os"
 import "core:mem"
 import "core:strings"
 import "core:log"
+import "utils"
 
 URL :: struct {
 	scheme: string,
@@ -45,7 +46,8 @@ open_file :: proc(path: string) {
 	fmt.printfln("File request at path %s\nContent: %s",path ,file_string)
 }
 
-parse_response_headers :: proc(headers: []u8)  {
+parse_response_headers :: proc(headers: []u8) -> int {
+	return 0
 }
 
 request_webpage :: proc(url: URL) {
@@ -74,7 +76,7 @@ request_webpage :: proc(url: URL) {
 	}
 
 	msg := string(bytes_buff[:bytes_recv])
-	// headers := parse_response_headers(bytes_buff[:])
+	headers := parse_response_headers(bytes_buff[:])
 	defer net.close(socket)
 	fmt.println("Response Recieved:")
 	if url.view_source {
@@ -85,7 +87,7 @@ request_webpage :: proc(url: URL) {
 }
 
 append_strings :: proc(string1, string2: string) -> string {
-	sb := strings.builder_make()
+	sb := strings.builder_make(allocator=context.temp_allocator)
 	strings.write_string(&sb, string1)
 	strings.write_string(&sb, string2)
 	the_string :=strings.to_string(sb)
@@ -163,6 +165,7 @@ main :: proc() {
 	context.logger = log.create_console_logger()
 
 	log.info("Program started")
+	utils.exit(1)
 
 	// Rest of program goes here,
 	// it will use context.logger whenever
